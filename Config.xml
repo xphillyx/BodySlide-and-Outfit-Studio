@@ -55,4 +55,6 @@
         <SkeletonRootName>Root</SkeletonRootName></Anim>
     <LastGroupFilter></LastGroupFilter>
     <LastOutfitFilter></LastOutfitFilter>
+    <BodySlideFrame width="1686" height="1057" x="100" y="100" maximized="false"></BodySlideFrame>
+    <OutfitStudioFrame width="1383" height="1049" x="165" y="153" sashpos="1110" maximized="false"></OutfitStudioFrame>
 </BodySlideConfig>

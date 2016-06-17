@@ -209,7 +209,7 @@ void TweakStroke::updateStroke(TweakPickInfo& pickInfo) {
 					addPoint(m, pts2[m][i], outPositions[m][i]);
 			}
 
-			if (refBrush->LiveNormals() && brushType != TBT_WEIGHT) {
+			if (refBrush->LiveNormals() && brushType != TBT_WEIGHT && brushType != TBT_SEGMENT) {
 				auto pending1 = async(launch::async, mesh::SmoothNormalsStaticArray, m, pts1[m], nPts1);
 				normalUpdates.push_back(move(pending1));
 
@@ -229,7 +229,8 @@ void TweakStroke::updateStroke(TweakPickInfo& pickInfo) {
 }
 
 void TweakStroke::endStroke() {
-	if (refBrush->Type() == TBT_MOVE) {
+	int type = refBrush->Type();
+	if (type == TBT_MOVE) {
 		for (auto &m : refMeshes) {
 			TweakBrushMeshCache* meshCache = refBrush->getCache(m);
 			affectedNodes[m].swap(meshCache->cachedNodes);
@@ -238,21 +239,23 @@ void TweakStroke::endStroke() {
 			meshCache->cachedNodesM.clear();
 		}
 	}
-	else if (refBrush->Type() == TBT_XFORM)
+	else if (type == TBT_XFORM)
 		for (auto &m : refMeshes)
 			m->CreateBVH();
 
-	if (refBrush->Type() != TBT_WEIGHT)
+	if (type != TBT_WEIGHT && type != TBT_SEGMENT && type!=TBT_MASK)
 		for (auto &m : refMeshes)
 			for (auto &bvhNode : affectedNodes[m])
 				bvhNode->UpdateAABB();
 
-	if (!refBrush->LiveNormals() || refBrush->Type() == TBT_WEIGHT) {
+	if (!refBrush->LiveNormals() || type == TBT_WEIGHT) {
 		for (auto &m : refMeshes) {
 			auto pending = async(launch::async, mesh::SmoothNormalsStatic, m);
 			normalUpdates.push_back(move(pending));
 		}
 	}
+
+	refBrush->strokeFinalize();
 
 	bool notReady = true;
 	while (notReady) {
@@ -1420,4 +1423,63 @@ void TB_SmoothWeight::brushAction(mesh* refmesh, TweakPickInfo& pickInfo, int* p
 			refmesh->vcolors[i].y = vc.y;
 		}
 	}
+}
+
+TB_Segment::TB_Segment()
+{
+	brushType = TBT_SEGMENT;
+	strength = 0.015f;
+	bMirror = false;
+	brushName = "Segment paint";
+}
+
+TB_Segment::~TB_Segment()
+{
+}
+
+bool TB_Segment::strokeFinalize()
+{
+	hitFacets.clear();
+	return true;
+}
+
+bool TB_Segment::queryPoints(mesh * m, TweakPickInfo & pickInfo, int * resultPoints, int & outResultCount, vector<int>& resultFacets, unordered_set<AABBTree::AABBTreeNode*>& affectedNodes)
+{
+	return TweakBrush::queryPoints(m,pickInfo,resultPoints,outResultCount,hitFacets,affectedNodes);
+}
+
+void TB_Segment::brushAction(mesh * refmesh, TweakPickInfo & pickInfo, int * points, int nPoints, unordered_map<int, Vector3>& movedpoints)
+{
+	Vector3 vc;
+	Vector3 vf(1.0f,0.0f,1.0f);
+
+	for (int i = 0; i < nPoints; i++) {
+		
+		vc = refmesh->vcolors[points[i]];
+		movedpoints[points[i]] = vc;
+
+		refmesh->vcolors[points[i]] = vf;
+	}
+	for(auto f:hitFacets) {
+		(*TriSegments)[f] = curSegment;
+	}
+}
+
+void TB_Segment::brushAction(mesh * refmesh, TweakPickInfo & pickInfo, int * points, int nPoints, Vector3 * movedpoints)
+{
+	Vector3 vc;
+	Vector3 vf(1.0f, 0.0f, 1.0f);
+
+	for (int i = 0; i < nPoints; i++) {
+		
+		vc = refmesh->vcolors[points[i]];
+		movedpoints[i] = vc;
+
+		refmesh->vcolors[points[i]] = vf;
+	}
+	for (auto f : hitFacets) {
+		(*TriSegments)[f] = curSegment;
+	}
+
+
 }

@@ -2010,8 +2010,8 @@ void OutfitStudio::OnSegmentContext(wxTreeEvent& event) {
 	segmentTree->SelectItem(event.GetItem());
 
 	wxMenu* menu = nullptr;
-	SubSegmentItemData* subSegmentData = dynamic_cast<SubSegmentItemData*>(segmentTree->GetItemData(event.GetItem()));
-	if (subSegmentData)
+	SegmentItemData* subSegmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(event.GetItem()));
+	if (!subSegmentData->isSegment)
 		menu = wxXmlResource::Get()->LoadMenu("menuSubSegmentContext");
 	else
 		menu = wxXmlResource::Get()->LoadMenu("menuSegmentContext");
@@ -2033,17 +2033,13 @@ void OutfitStudio::OnSegmentTreeContext(wxCommandEvent& WXUNUSED(event)) {
 void OutfitStudio::OnAddSegment(wxCommandEvent& WXUNUSED(event)) {
 	wxTreeItemId newItem;
 	if (!activeSegment.IsOk() || segmentTree->GetChildrenCount(segmentRoot) <= 0) {
-		vector<Triangle> shapeTris;
-		project->GetWorkNif()->GetTrisForShape(activeItem->shapeName, &shapeTris);
-
-		vector<ushort> tris(shapeTris.size());
-		for (int id = 0; id < tris.size(); id++)
-			tris[id] = id;
-
-		newItem = segmentTree->AppendItem(segmentRoot, "Segment", -1, -1, new SegmentItemData(tris));
+		newItem = segmentTree->AppendItem(segmentRoot, "Segment", -1, -1, new SegmentItemData(true,0));
 	}
-	else
-		newItem = segmentTree->InsertItem(segmentRoot, activeSegment, "Segment", -1, -1, new SegmentItemData(vector<ushort>()));
+	else {
+
+		int priorID = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(activeSegment))->sseg_id;
+		newItem = segmentTree->InsertItem(segmentRoot, activeSegment, "Segment", -1, -1, new SegmentItemData(true, priorID));
+	}
 
 	if (newItem.IsOk()) {
 		segmentTree->UnselectAll();
@@ -2056,18 +2052,18 @@ void OutfitStudio::OnAddSegment(wxCommandEvent& WXUNUSED(event)) {
 void OutfitStudio::OnAddSubSegment(wxCommandEvent& WXUNUSED(event)) {
 	wxTreeItemId newItem;
 	wxTreeItemId parent = segmentTree->GetItemParent(activeSegment);
+	SegmentItemData* segmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(activeSegment));
+	if (segmentData) {
+		segmentData->subsegments.push_back(new SegmentItemData(false, segmentData->sseg_id));
+	} 
 	if (parent == segmentRoot) {
-		vector<ushort> tris;
-		if (segmentTree->GetChildrenCount(activeSegment) <= 0) {
-			SegmentItemData* segmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(activeSegment));
-			if (segmentData)
-				tris = segmentData->tris;
-		}
-
-		newItem = segmentTree->PrependItem(activeSegment, "Sub Segment", -1, -1, new SubSegmentItemData(tris, 0xFFFFFFFF));
+		
+		newItem = segmentTree->PrependItem(activeSegment, "Sub Segment", -1, -1, segmentData->subsegments.back());
 	}
-	else
-		newItem = segmentTree->InsertItem(parent, activeSegment, "Sub Segment", -1, -1, new SubSegmentItemData(vector<ushort>(), 0xFFFFFFFF));
+	else {
+		
+		newItem = segmentTree->InsertItem(parent, activeSegment, "Sub Segment", -1, -1, segmentData->subsegments.back());
+	}
 
 	if (newItem.IsOk()) {
 		segmentTree->UnselectAll();
@@ -2079,55 +2075,31 @@ void OutfitStudio::OnAddSubSegment(wxCommandEvent& WXUNUSED(event)) {
 
 void OutfitStudio::OnDeleteSegment(wxCommandEvent& WXUNUSED(event)) {
 	SegmentItemData* segmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(activeSegment));
+	int old_ssegid = -1;
+	int new_ssegid = -1;
 	if (segmentData) {
-		vector<ushort> tris = segmentData->tris;
-		wxTreeItemId sibling = segmentTree->GetPrevSibling(activeSegment);
-		if (!sibling.IsOk())
-			sibling = segmentTree->GetNextSibling(activeSegment);
-
-		if (sibling.IsOk()) {
-			SegmentItemData* siblingData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(sibling));
-			if (siblingData) {
-				for (auto &id : tris)
-					siblingData->tris.push_back(id);
-
-				wxTreeItemIdValue cookie;
-				wxTreeItemId child = segmentTree->GetFirstChild(sibling, cookie);
-				if (child.IsOk()) {
-					SubSegmentItemData* childData = dynamic_cast<SubSegmentItemData*>(segmentTree->GetItemData(child));
-					if (childData) {
-						for (auto &id : tris)
-							childData->tris.push_back(id);
-					}
-				}
-			}
-
-			segmentTree->UnselectAll();
-			segmentTree->Delete(activeSegment);
-			segmentTree->SelectItem(sibling);
-		}
-		else {
-			segmentTree->Delete(activeSegment);
-			activeSegment.Unset();
-		}
+		old_ssegid = segmentData->sseg_id; 
+		// Clear all subsegment for this segment.  
+		ClearSubSegment(old_ssegid);
 	}
 
 	UpdateSegmentNames();
 }
 
 void OutfitStudio::OnDeleteSubSegment(wxCommandEvent& WXUNUSED(event)) {
-	SubSegmentItemData* subSegmentData = dynamic_cast<SubSegmentItemData*>(segmentTree->GetItemData(activeSegment));
+	SegmentItemData* subSegmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(activeSegment));
+	int old_ssegid = -1;
+	int new_ssegid = -1;
 	if (subSegmentData) {
-		vector<ushort> tris = subSegmentData->tris;
+		old_ssegid = subSegmentData->sseg_id;
 		wxTreeItemId sibling = segmentTree->GetPrevSibling(activeSegment);
 		if (!sibling.IsOk())
 			sibling = segmentTree->GetNextSibling(activeSegment);
 
 		if (sibling.IsOk()) {
-			SubSegmentItemData* siblingData = dynamic_cast<SubSegmentItemData*>(segmentTree->GetItemData(sibling));
+			SegmentItemData* siblingData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(sibling));
 			if (siblingData)
-				for (auto &id : tris)
-					siblingData->tris.push_back(id);
+				new_ssegid = siblingData->sseg_id;
 
 			segmentTree->UnselectAll();
 			segmentTree->Delete(activeSegment);
@@ -2139,16 +2111,55 @@ void OutfitStudio::OnDeleteSubSegment(wxCommandEvent& WXUNUSED(event)) {
 			segmentTree->Delete(activeSegment);
 			segmentTree->SelectItem(parent);
 		}
+		if (old_ssegid != -1 && new_ssegid != -1) {
+			ReassignSubSegment(old_ssegid, new_ssegid);
+		}
 	}
 
 	UpdateSegmentNames();
+}
+
+int OutfitStudio::GetActiveSegmentID()
+{
+	if (!activeSegment.IsOk())
+		return 0;
+	SegmentItemData* subSegmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(activeSegment));
+	if(subSegmentData)
+		return subSegmentData->sseg_id;
+	else return 0;
+}
+
+void OutfitStudio::ClearSubSegment(int sseg_id) {
+	bool fullsegment = false;
+	if ((sseg_id % 10000) == 0) {
+		// full segment mode -- clear subsegment assignments too
+		fullsegment = true;
+	}
+
+	for (auto& t : TriSegments) {
+		if (fullsegment && (t >= sseg_id && t < (sseg_id + 10000))) {
+			t = 0;
+		}
+		else if(t == sseg_id) {
+			t = 0;		
+		}
+	}
+
+}
+
+void  OutfitStudio::ReassignSubSegment(int old_sseg_id, int new_sseg_id) {
+	for (auto& t : TriSegments) {
+		if (t == old_sseg_id) {
+			t = new_sseg_id;
+		}
+	}
 }
 
 void OutfitStudio::OnSegmentTypeChanged(wxCommandEvent& event) {
 	wxChoice* segmentType = (wxChoice*)event.GetEventObject();
 
 	if (activeSegment.IsOk() && segmentTree->GetItemParent(activeSegment).IsOk()) {
-		SubSegmentItemData* subSegmentData = dynamic_cast<SubSegmentItemData*>(segmentTree->GetItemData(activeSegment));
+		SegmentItemData* subSegmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(activeSegment));
 		if (subSegmentData) {
 			unsigned long type = 0xFFFFFFFF;
 			segmentType->GetStringSelection().Prepend("0x").ToULong(&type, 16);
@@ -2166,16 +2177,35 @@ void OutfitStudio::OnSegmentApply(wxCommandEvent& event) {
 	uint segmentIndex = 0;
 	uint triangleOffset = 0;
 
-	vector<ushort> triangles;
+	vector<ushort> triangles;	
 	wxTreeItemIdValue cookie;
 	wxTreeItemId child = segmentTree->GetFirstChild(segmentRoot, cookie);
+
+	// Single pass through to figure out triangle counts per segment and subsegment
+	map<int, int> segment_counts;
+	for (auto t : TriSegments) {
+		segment_counts[t]++;
+		if (t % 10000 != 0) {
+			segment_counts[std::floor(t / 10000) * 10000]++;
+		}
+	}
+	// Start with an unsorted triangle index array
+	for (int i = 0; i < project->GetWorkNif()->GetTriCountForShape(activeItem->shapeName); i++) {
+		triangles[i] = i;
+	}
+	// Sort them with casual lambda function
+	std::stable_sort(triangles.begin(), triangles.end(), [this](const ushort& a, const ushort& b) {
+		if(TriSegments[a] < TriSegments[b])
+			return true;
+		return false;
+	});
 
 	while (child.IsOk()) {
 		SegmentItemData* segmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(child));
 		if (segmentData) {
 			// Create new segment
 			BSSubIndexTriShape::BSSITSSegment segment;
-			segment.numPrimitives = segmentData->tris.size();
+			segment.numPrimitives = segment_counts[segmentData->sseg_id];
 			segment.startIndex = triangleOffset;
 
 			size_t childCount = segmentTree->GetChildrenCount(child);
@@ -2194,18 +2224,15 @@ void OutfitStudio::OnSegmentApply(wxCommandEvent& event) {
 				wxTreeItemIdValue subCookie;
 				wxTreeItemId subChild = segmentTree->GetFirstChild(child, subCookie);
 				while (subChild.IsOk()) {
-					SubSegmentItemData* subSegmentData = dynamic_cast<SubSegmentItemData*>(segmentTree->GetItemData(subChild));
+					SegmentItemData* subSegmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(subChild));
 					if (subSegmentData) {
 						// Create new subsegment
 						BSSubIndexTriShape::BSSITSSubSegment subSegment;
 						subSegment.arrayIndex = parentArrayIndex;
-						subSegment.numPrimitives = subSegmentData->tris.size();
+						subSegment.numPrimitives = segment_counts[subSegmentData->sseg_id];
 						subSegment.startIndex = triangleOffset;
 
-						sort(subSegmentData->tris.begin(), subSegmentData->tris.end());
-						triangleOffset += subSegmentData->tris.size() * 3;
-						for (auto &id : subSegmentData->tris)
-							triangles.push_back(id);
+						triangleOffset += subSegment.numPrimitives * 3;
 
 						segment.subSegments.push_back(subSegment);
 
@@ -2225,10 +2252,7 @@ void OutfitStudio::OnSegmentApply(wxCommandEvent& event) {
 			}
 			else {
 				// No subsegments, add the triangles of the segment itself
-				sort(segmentData->tris.begin(), segmentData->tris.end());
-				triangleOffset += segmentData->tris.size() * 3;
-				for (auto &id : segmentData->tris)
-					triangles.push_back(id);
+				triangleOffset += segment.numPrimitives * 3;
 			}
 
 			segmentation.segments.push_back(segment);
@@ -2262,31 +2286,48 @@ void OutfitStudio::OnSegmentReset(wxCommandEvent& event) {
 	CreateSegmentTree(activeItem->shapeName);
 }
 
+
+/* Create Segment Tree
+	During editing, segment data is tracked with a single integer array sized to match the number of triangles in the active shape. The only time memory allocation is done is in CreateSegmentTree
+	The integer in each array location indicates what segment the triangle is assigned to.  This number contains both the segment and subsegment number (1-based), and is called the subsegment id
+	the subsegment id is calculated by ((segmentIndex + 1) * 10000) + (subsegmentIndex + 1). For example, a triangle in the third segment, fourth subsegment, would be assigned the id 30004   
+	Reassigning a triangle is just a matter of changing this id to one that matches the new subsegment.  ( O(1) )
+	Ordering the triangle list in the shape based on the subsegment id in numeric order results in a correctly ordered triangle list for use in Fallout4's segmentation system. ( O(n) )
+	A zero subsegment id indicates an unassigned triangle, enabling fast detection of unassigned tris
+	An exact multiple of 10000 indicates a triangle assigned directly to a segment, and not any subsegments ( subsegmentID % 10000 == 0 )
+	Modifying the segmentation tree requires bookkeeping and is an O(n) operation
+		Inserting a new segment requires adding 10000 to any ssegid later in the tree
+		Deleting a segment zeros all assigned triangles within that segment's id range, and subtracts 10000 from any ssegid later in the tree
+		Inserting a new subsegment requires adding 1 to any ssegid later in the segment's subsegement list
+		Deleting a subsegment requires subtracting 1 from assigned triangles if it's the last subsegment in the segment, or subtracting 1 from all ssegid later in the segment's subsegment list
+
+*/
 void OutfitStudio::CreateSegmentTree(const string& shapeName) {
 	if (segmentTree->GetChildrenCount(segmentRoot) > 0)
 		segmentTree->DeleteChildren(segmentRoot);
 
 	int arrayIndex = 0;
 	BSSubIndexTriShape::BSSITSSegmentation segmentation;
+	// Resize general purpose segment data vector to fit triangle count of active shape.
+	TriSegments.resize(project->GetWorkNif()->GetTriCountForShape(activeItem->shapeName), 0);
 
 	if (project->GetWorkNif()->GetShapeSegments(shapeName, segmentation)) {
 		for (int i = 0; i < segmentation.segments.size(); i++) {
 			uint startIndex = segmentation.segments[i].startIndex / 3;
-			vector<ushort> tris(segmentation.segments[i].numPrimitives);
 			for (int id = startIndex; id < startIndex + segmentation.segments[i].numPrimitives; id++)
-				tris[id - startIndex] = id;
+				TriSegments[id] = (i+1) * 10000;
 
-			wxTreeItemId segID = segmentTree->AppendItem(segmentRoot, "Segment", -1, -1, new SegmentItemData(tris));
+			SegmentItemData* cur_segment = new SegmentItemData(true, i * 10000);
+			wxTreeItemId segID = segmentTree->AppendItem(segmentRoot, "Segment", -1, -1, cur_segment);
 			if (segID.IsOk()) {
 				for (int j = 0; j < segmentation.segments[i].subSegments.size(); j++) {
 					startIndex = segmentation.segments[i].subSegments[j].startIndex / 3;
-					vector<ushort> subTris(segmentation.segments[i].subSegments[j].numPrimitives);
 					for (int id = startIndex; id < startIndex + segmentation.segments[i].subSegments[j].numPrimitives; id++)
-						subTris[id - startIndex] = id;
+						TriSegments[id] = TriSegments[id] + (j+1);
 
 					arrayIndex++;
-					segmentTree->AppendItem(segID, "Sub Segment", -1, -1,
-						new SubSegmentItemData(subTris, segmentation.subSegmentData.dataRecords[arrayIndex].unkInt2, segmentation.subSegmentData.dataRecords[arrayIndex].extraData));
+					cur_segment->subsegments.push_back(new SegmentItemData(false, (i + 1) * 10000 + j, segmentation.subSegmentData.dataRecords[arrayIndex].unkInt2, segmentation.subSegmentData.dataRecords[arrayIndex].extraData));
+					segmentTree->AppendItem(segID, "Sub Segment", -1, -1,cur_segment->subsegments.back());
 				}
 			}
 			arrayIndex++;
@@ -2306,7 +2347,7 @@ void OutfitStudio::CreateSegmentTree(const string& shapeName) {
 }
 
 void OutfitStudio::ShowSegment(const wxTreeItemId& item, bool updateFromMask) {
-	unordered_map<ushort, float> mask;
+	std::unordered_map<ushort, float> mask;
 	wxChoice* segmentType = nullptr;
 	if (!updateFromMask) {
 		segmentType = (wxChoice*)FindWindowByName("segmentType");
@@ -2321,237 +2362,77 @@ void OutfitStudio::ShowSegment(const wxTreeItemId& item, bool updateFromMask) {
 
 	if (!activeSegment.IsOk() || !segmentTree->GetItemParent(activeSegment).IsOk())
 		return;
+	
+	// Get the active mesh we're working on
+	mesh* m = glView->GetMesh(activeItem->shapeName);
 
-	// Get all triangles of the active shape
-	vector<Triangle> tris;
-	project->GetWorkNif()->GetTrisForShape(activeItem->shapeName, &tris);
+	// GetSubsegment info
+	SegmentItemData* subSegmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(activeSegment));
 
-	wxTreeItemId parent;
-	SubSegmentItemData* subSegmentData = dynamic_cast<SubSegmentItemData*>(segmentTree->GetItemData(activeSegment));
-	if (subSegmentData) {
-		// Active segment is a subsegment
-		parent = segmentTree->GetItemParent(activeSegment);
+	// assume we don't have a parent segment	
+	SegmentItemData* segmentData = NULL;
+	
+	// get the selected subsegment ID
+	int sseg_id = subSegmentData->sseg_id;
 
-		if (updateFromMask) {
-			subSegmentData->tris.clear();
-
-			// Add triangles from mask (1 or more out of 3 vertices have to be masked)
-			for (int t = 0; t < tris.size(); t++) {
-				if (mask.find(tris[t].p1) != mask.end() && mask.find(tris[t].p2) != mask.end() && mask.find(tris[t].p3) != mask.end())
-					subSegmentData->tris.push_back(t);
-			}
-
-			// Remove new triangles from all other subsegments of the parent segment
-			wxTreeItemIdValue cookie;
-			wxTreeItemId child = segmentTree->GetFirstChild(parent, cookie);
-			while (child.IsOk()) {
-				SubSegmentItemData* childSubSegmentData = dynamic_cast<SubSegmentItemData*>(segmentTree->GetItemData(child));
-				if (childSubSegmentData && childSubSegmentData != subSegmentData) {
-					for (int i = 0; i < subSegmentData->tris.size(); i++) {
-						for (int j = childSubSegmentData->tris.size() - 1; j >= 0; --j) {
-							if (childSubSegmentData->tris[j] == subSegmentData->tris[i]) {
-								childSubSegmentData->tris.erase(childSubSegmentData->tris.begin() + j);
-								j--;
-							}
-						}
-					}
-				}
-
-				child = segmentTree->GetNextChild(parent, cookie);
-			}
-
-			// Add new triangles to the parent segment as well
-			SegmentItemData* segmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(parent));
-			if (segmentData) {
-				for (int i = 0; i < subSegmentData->tris.size(); i++)
-					if (find(segmentData->tris.begin(), segmentData->tris.end(), subSegmentData->tris[i]) == segmentData->tris.end())
-						segmentData->tris.push_back(subSegmentData->tris[i]);
-			}
-
-			// Remove new triangles from all other segments and their subsegments
-			wxTreeItemIdValue segCookie;
-			wxTreeItemId segChild = segmentTree->GetFirstChild(segmentRoot, segCookie);
-			while (segChild.IsOk()) {
-				SegmentItemData* childSegmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(segChild));
-				if (childSegmentData && childSegmentData != segmentData) {
-					for (int i = 0; i < segmentData->tris.size(); i++) {
-						for (int j = childSegmentData->tris.size() - 1; j >= 0; --j) {
-							if (childSegmentData->tris[j] == segmentData->tris[i]) {
-								wxTreeItemIdValue subCookie;
-								wxTreeItemId subChild = segmentTree->GetFirstChild(segChild, subCookie);
-								while (subChild.IsOk()) {
-									SubSegmentItemData* childSubSegmentData = dynamic_cast<SubSegmentItemData*>(segmentTree->GetItemData(subChild));
-									if (childSubSegmentData) {
-										auto foundTri = find(childSubSegmentData->tris.begin(), childSubSegmentData->tris.end(), childSegmentData->tris[j]);
-										if (foundTri != childSubSegmentData->tris.end())
-											childSubSegmentData->tris.erase(foundTri);
-									}
-
-									subChild = segmentTree->GetNextChild(segChild, subCookie);
-								}
-
-								childSegmentData->tris.erase(childSegmentData->tris.begin() + j);
-								j--;
-							}
-						}
-					}
-				}
-
-				segChild = segmentTree->GetNextChild(segmentRoot, segCookie);
-			}
-		}
-		else {
-			segmentType->Enable();
-			segmentType->SetStringSelection(wxString::Format("%x", subSegmentData->type));
-		}
+	// calculate the segment and subsegment offset
+	int seg = std::floor(sseg_id / 10000);
+	int sseg = sseg_id - (seg*10000);
+	
+	// Find out how many children the parent has
+	int nChildren = 0;
+	if (!subSegmentData->isSegment) {
+		// selected item is a subsegment, so it has siblings.	
+		wxTreeItemId parent = segmentTree->GetItemParent(activeSegment);
+		segmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(parent));
+		nChildren = segmentData->subsegments.size();
 	}
 	else {
-		SegmentItemData* segmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(activeSegment));
-		if (segmentData) {
-			// Active segment is a normal segment
-			parent = activeSegment;
+		// the currently selected item is a full segment
+		nChildren = subSegmentData->subsegments.size();
+	}	
 
-			if (updateFromMask) {
-				segmentData->tris.clear();
-
-				// Add triangles from mask (1 or more out of 3 vertices have to be masked)
-				for (int t = 0; t < tris.size(); t++) {
-					if (mask.find(tris[t].p1) != mask.end() && mask.find(tris[t].p2) != mask.end() && mask.find(tris[t].p3) != mask.end())
-						segmentData->tris.push_back(t);
-				}
-
-				// Remove new triangles from all other segments and their subsegments
-				wxTreeItemIdValue cookie;
-				wxTreeItemId child = segmentTree->GetFirstChild(segmentRoot, cookie);
-				while (child.IsOk()) {
-					SegmentItemData* childSegmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(child));
-					if (childSegmentData && childSegmentData != segmentData) {
-						for (int i = 0; i < segmentData->tris.size(); i++) {
-							for (int j = childSegmentData->tris.size() - 1; j >= 0; --j) {
-								if (childSegmentData->tris[j] == segmentData->tris[i]) {
-									wxTreeItemIdValue subCookie;
-									wxTreeItemId subChild = segmentTree->GetFirstChild(child, subCookie);
-									while (subChild.IsOk()) {
-										SubSegmentItemData* childSubSegmentData = dynamic_cast<SubSegmentItemData*>(segmentTree->GetItemData(subChild));
-										if (childSubSegmentData) {
-											auto foundTri = find(childSubSegmentData->tris.begin(), childSubSegmentData->tris.end(), childSegmentData->tris[j]);
-											if (foundTri != childSubSegmentData->tris.end())
-												childSubSegmentData->tris.erase(foundTri);
-										}
-
-										subChild = segmentTree->GetNextChild(child, subCookie);
-									}
-
-									childSegmentData->tris.erase(childSegmentData->tris.begin() + j);
-									j--;
-								}
-							}
-						}
-					}
-
-					child = segmentTree->GetNextChild(segmentRoot, cookie);
-				}
-
-				// Check if all triangles of the segment are assigned to any subsegment
-				for (int t = 0; t < segmentData->tris.size(); t++) {
-					bool found = false;
-					wxTreeItemIdValue subCookie;
-					wxTreeItemId subChild = segmentTree->GetFirstChild(activeSegment, subCookie);
-					while (subChild.IsOk()) {
-						SubSegmentItemData* childSubSegmentData = dynamic_cast<SubSegmentItemData*>(segmentTree->GetItemData(subChild));
-						if (childSubSegmentData)
-							if (find(childSubSegmentData->tris.begin(), childSubSegmentData->tris.end(), segmentData->tris[t]) != childSubSegmentData->tris.end())
-								found = true;
-
-						if (found)
-							break;
-
-						subChild = segmentTree->GetNextChild(activeSegment, subCookie);
-					}
-
-					// If not, add it to the last subsegment
-					if (!found) {
-						wxTreeItemId last = segmentTree->GetLastChild(activeSegment);
-						if (last.IsOk()) {
-							SubSegmentItemData* lastSubSegmentData = dynamic_cast<SubSegmentItemData*>(segmentTree->GetItemData(last));
-							if (lastSubSegmentData)
-								lastSubSegmentData->tris.push_back(segmentData->tris[t]);
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Display segmentation colors depending on what is selected
-	mesh* m = glView->GetMesh(activeItem->shapeName);
+	// color gradient is a proportion of the number of children per segment.  The current color is the current subsegment number multiplied by the size of the gradient step.
+	float colorgrad = 1.0f /( nChildren + 1);
+	
+	// paint mesh with selected data
 	if (m) {
 		m->ColorFill(Vector3(0.0f, 0.0f, 0.0f));
+		int idx = 0;
+		for (auto t : TriSegments) {
+			if (t > seg * 10000 && t < (seg + 1) * 10000) {
+				int tss = t - seg * 10000;
 
-		if (parent.IsOk()) {
-			SegmentItemData* segmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(parent));
-			if (segmentData) {
-				size_t childCount = segmentTree->GetChildrenCount(parent);
-				if (childCount > 0) {
-					// Apply dynamic color to all subsegments of the segment
-					float color = 0.0f;
-					wxTreeItemIdValue cookie;
-					wxTreeItemId child = segmentTree->GetFirstChild(parent, cookie);
-					while (child.IsOk()) {
-						SubSegmentItemData* childSubSegmentData = dynamic_cast<SubSegmentItemData*>(segmentTree->GetItemData(child));
-						if (childSubSegmentData) {
-							color += 1.0f / childCount;
-
-							if (childSubSegmentData != subSegmentData) {
-								for (auto &id : childSubSegmentData->tris) {
-									if (tris.size() <= id)
-										continue;
-
-									m->vcolors[tris[id].p1].y = color;
-									m->vcolors[tris[id].p2].y = color;
-									m->vcolors[tris[id].p3].y = color;
-								}
-							}
-							else {
-								for (auto &id : childSubSegmentData->tris) {
-									if (tris.size() <= id)
-										continue;
-
-									m->vcolors[tris[id].p1].x = 1.0f;
-									m->vcolors[tris[id].p2].x = 1.0f;
-									m->vcolors[tris[id].p3].x = 1.0f;
-									m->vcolors[tris[id].p1].z = color;
-									m->vcolors[tris[id].p2].z = color;
-									m->vcolors[tris[id].p3].z = color;
-								}
-							}
-						}
-
-						child = segmentTree->GetNextChild(activeSegment, cookie);
-					}
+				if(t != sseg_id) {
+					m->vcolors[m->tris[idx].p1].z= colorgrad*tss;
+					m->vcolors[m->tris[idx].p2].z= colorgrad*tss;
+					m->vcolors[m->tris[idx].p3].z= colorgrad*tss;
 				}
 				else {
-					// No subsegments, apply fixed color to segment
-					for (auto &id : segmentData->tris) {
-						if (tris.size() <= id)
-							continue;
-
-						m->vcolors[tris[id].p1].x = 1.0f;
-						m->vcolors[tris[id].p2].x = 1.0f;
-						m->vcolors[tris[id].p3].x = 1.0f;
-						m->vcolors[tris[id].p1].z = 1.0f;
-						m->vcolors[tris[id].p2].z = 1.0f;
-						m->vcolors[tris[id].p3].z = 1.0f;
-					}
+					m->vcolors[m->tris[idx].p1].z = 1.0f;
+					m->vcolors[m->tris[idx].p2].z = 1.0f;
+					m->vcolors[m->tris[idx].p3].z = 1.0f;								
 				}
 			}
+			else if (t == seg * 10000 && nChildren == 0) {
+				m->vcolors[m->tris[idx].p1].z = 1.0f;
+				m->vcolors[m->tris[idx].p2].z = 1.0f;
+				m->vcolors[m->tris[idx].p3].z = 1.0f;
+			}
+
+			idx	++;
 		}
 	}
+
+	segmentType->Enable();
+	segmentType->SetStringSelection(wxString::Format("%x", subSegmentData->type));
 
 	glView->Render();
 }
 
+
 void OutfitStudio::UpdateSegmentNames() {
+	int segIDOffset = 0;
 	int segmentIndex = 0;
 	int arrayIndex = 0;
 	wxTreeItemIdValue cookie;
@@ -2559,6 +2440,11 @@ void OutfitStudio::UpdateSegmentNames() {
 
 	while (child.IsOk()) {
 		segmentTree->SetItemText(child, wxString::Format("Segment #%d, Array #%d", segmentIndex, arrayIndex));
+		// Get Segment Data to update ids
+		SegmentItemData* SegmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(child));
+		segIDOffset += 10000 * (segmentIndex + 1) - SegmentData->sseg_id;		// Calculate any difference in the segment IDs due to add/remove
+		SegmentData->sseg_id += segIDOffset;									// Update segment ids with any current offset
+		
 
 		int subSegmentIndex = 0;
 		wxTreeItemIdValue subCookie;
@@ -2566,6 +2452,10 @@ void OutfitStudio::UpdateSegmentNames() {
 
 		while (subChild.IsOk()) {
 			segmentTree->SetItemText(subChild, wxString::Format("Sub Segment #%d, Array #%d", subSegmentIndex, arrayIndex));
+
+			// GetSegment Data to update ids
+			SegmentItemData* SubSegmentData = dynamic_cast<SegmentItemData*>(segmentTree->GetItemData(subChild));
+			SubSegmentData->sseg_id += segIDOffset;								// Update segment ids with any current offset
 
 			subChild = segmentTree->GetNextChild(child, subCookie);
 			subSegmentIndex++;
@@ -2988,6 +2878,8 @@ void OutfitStudio::OnTabButtonClick(wxCommandEvent& event) {
 		glView->SetSegmentsVisible();
 		glView->SetMaskVisible(false);
 		glView->SetGlobalBrushCollision(false);
+
+		
 
 		GetMenuBar()->Check(XRCID("btnMaskBrush"), true);
 		GetMenuBar()->Check(XRCID("btnXMirror"), false);
@@ -5094,6 +4986,10 @@ bool wxGLPanel::StartBrushStroke(const wxPoint& screenPos) {
 
 	savedBrush = activeBrush;
 
+	if (segmentMode) {
+		activeBrush = &segmentBrush;
+	}
+
 	if (wxGetKeyState(WXK_CONTROL)) {
 		if (wxGetKeyState(WXK_ALT) && !segmentMode) {
 			UnMaskBrush.setStrength(-maskBrush.getStrength());
@@ -5102,6 +4998,10 @@ bool wxGLPanel::StartBrushStroke(const wxPoint& screenPos) {
 		else {
 			activeBrush = &maskBrush;
 		}
+	}
+	else if (activeBrush == &segmentBrush) {
+		segmentBrush.curSegment = os->GetActiveSegmentID();
+		segmentBrush.TriSegments = &os->TriSegments;
 	}
 	else if (activeBrush == &weightBrush) {
 		if (wxGetKeyState(WXK_ALT)) {
@@ -5213,7 +5113,7 @@ void wxGLPanel::UpdateBrushStroke(const wxPoint& screenPos) {
 			ShowTransformTool();
 
 		if (segmentMode)
-			os->ShowSegment(nullptr, true);
+			os->ShowSegment(nullptr, false);
 	}
 }
 
@@ -5251,7 +5151,7 @@ void wxGLPanel::EndBrushStroke() {
 			ShowTransformTool();
 
 		if (segmentMode)
-			os->ShowSegment(nullptr, true);
+			os->ShowSegment(nullptr, false);
 	}
 }
 

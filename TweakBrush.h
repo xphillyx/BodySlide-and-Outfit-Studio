@@ -76,6 +76,7 @@ using namespace std;
 #define TBT_MASK	  3
 #define TBT_WEIGHT	  4
 #define TBT_XFORM	  5
+#define TBT_SEGMENT	  6
 
 #define TBS_STANDARD  1		// Standard stroke, applies effect cumulatively.
 #define TBS_MOVE	  2		// Move stroke, maintains original positions and changes modification.
@@ -205,6 +206,11 @@ public:
 	// Stroke initialization interface, allows a brush to set up initial conditions.
 	// Default implementation is to return true. Return false to cancel stroke based on provided data.
 	virtual bool strokeInit(vector<mesh*>, TweakPickInfo&) {
+		return true;
+	}
+
+	// Stroke finalization, called when ending the stroke for a brush.  Can be used to perform per-stroke cleanup 
+	virtual bool strokeFinalize() {
 		return true;
 	}
 
@@ -436,6 +442,22 @@ public:
 	virtual void brushAction(mesh* refmesh, TweakPickInfo& pickInfo, int* points, int nPoints, unordered_map<int, Vector3>& movedpoints);
 	virtual void brushAction(mesh* refmesh, TweakPickInfo& pickInfo, int* points, int nPoints, Vector3* movedpoints);
 };
+
+class TB_Segment : public TweakBrush {
+public:
+	int curSegment;						// externally defined segment id value to assign triangles to
+	vector<int> hitFacets;				// facets touched by the brush
+	vector<int>* TriSegments;			// externally defined segment id values for triangles
+
+	TB_Segment();
+	virtual ~TB_Segment();
+	
+	virtual bool strokeFinalize();
+	virtual bool queryPoints(mesh* m, TweakPickInfo& pickInfo, int* resultPoints, int& outResultCount, vector<int>& resultFacets, unordered_set<AABBTree::AABBTreeNode*>& affectedNodes);
+	virtual void brushAction(mesh* refmesh, TweakPickInfo& pickInfo, int* points, int nPoints, unordered_map<int, Vector3>& movedpoints);
+	virtual void brushAction(mesh* refmesh, TweakPickInfo& pickInfo, int* points, int nPoints, Vector3* movedpoints);
+};
+
 
 class TweakStroke {
 	vector<mesh*> refMeshes;

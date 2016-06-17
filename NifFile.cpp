@@ -1953,6 +1953,31 @@ bool NifFile::GetTrisForShape(const string& shapeName, vector<Triangle>* outTris
 	return false;
 }
 
+int NifFile::GetTriCountForShape(const string& shapeName) {
+	int bType;
+	int dataID = shapeDataIdForName(shapeName, bType);
+	if (dataID == -1)
+		return 0;
+
+	if (bType == NITRISHAPEDATA) {
+		NiTriShapeData* shapeData = static_cast<NiTriShapeData*>(GetBlock(dataID));
+		return shapeData->triangles.size();
+	}
+	else if (bType == NITRISTRIPSDATA) {
+		NiTriStripsData* stripsData = static_cast<NiTriStripsData*>(GetBlock(dataID));
+		// TODO: make a count tris in strips function instead of this slow garbage:
+		vector<Triangle> tempTris;
+		stripsData->StripsToTris(&tempTris);
+		return tempTris.size();
+	}
+	else if (bType == BSSUBINDEXTRISHAPE || bType == BSTRISHAPE || bType == BSMESHLODTRISHAPE) {
+		BSTriShape* shapeData = static_cast<BSTriShape*>(GetBlock(dataID));
+		return shapeData->triangles.size();
+	}
+
+	return 0;
+}
+
 bool NifFile::ReorderTriangles(const string& shapeName, const vector<ushort>& triangleIndices) {
 	int bType;
 	int dataID = shapeDataIdForName(shapeName, bType);

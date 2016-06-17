@@ -50,6 +50,30 @@ public:
 	}
 };
 
+class SegmentItemData : public wxTreeItemData {
+public:
+	
+	int sseg_id;				// Subsegment ID number.  This is the id a triangle assoicates to.  NOTE: Segments have IDs too, but will only have associated triangles if there are no subsegments associated.
+	uint type = 0xffffffff;		// segment "type".  
+	vector<float> extraData;
+	bool isSegment = false;		// true if this segement is treated as a parent of other segments
+	vector<SegmentItemData*> subsegments;
+
+	SegmentItemData(bool isSegmentParent, int priorID, const uint& inType=-1, const vector<float>& inExtraData = vector<float>()) {
+		if (isSegmentParent) {
+			sseg_id = priorID + 10000;
+		}
+		else {
+			sseg_id	= priorID + 1;
+		}
+		
+		isSegment = isSegmentParent;
+		type = inType;
+		extraData = inExtraData;
+	}
+};
+
+/*
 class SegmentItemData : public wxTreeItemData  {
 public:
 	vector<ushort> tris;
@@ -71,7 +95,7 @@ public:
 		extraData = inExtraData;
 	}
 };
-
+*/
 
 class OutfitStudio;
 
@@ -505,6 +529,7 @@ private:
 	TB_Unweight unweightBrush;
 	TB_SmoothWeight smoothWeightBrush;
 	TB_XForm translateBrush;
+	TB_Segment segmentBrush;
 
 	TweakStroke* activeStroke;
 	TweakUndo* strokeManager;
@@ -547,6 +572,7 @@ public:
 	wxTreeItemId outfitRoot;
 	wxTreeItemId bonesRoot;
 	wxTreeItemId segmentRoot;
+	vector<int> TriSegments;				// Currently selected shape segment data, contains a number of entries equal to triangle count in selected shape, each entry is segment id.
 	wxImageList* visStateImages;
 
 	ConfigurationManager& appConfig;
@@ -595,6 +621,7 @@ public:
 
 	void ShowSegment(const wxTreeItemId& item = nullptr, bool updateFromMask = false);
 	void UpdateSegmentNames();
+	int GetActiveSegmentID();
 
 	void AnimationGUIFromProj();
 	void RefreshGUIFromProj();
@@ -827,6 +854,8 @@ private:
 	void OnSegmentTypeChanged(wxCommandEvent& event);
 	void OnSegmentApply(wxCommandEvent& event);
 	void OnSegmentReset(wxCommandEvent& event);
+	void ClearSubSegment(int sseg_id);
+	void ReassignSubSegment(int old_sseg_id, int new_sseg_id);
 
 	void CreateSegmentTree(const string& shapeName = "");
 

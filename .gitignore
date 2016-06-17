@@ -11,3 +11,5 @@
 *.sdf
 *.opensdf
 *.user
+/BodySlide.VC.VC.opendb
+/BodySlide.VC.db

@@ -35,6 +35,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "FSEngine.h"
 
 #include <algorithm>
+#include <iterator>	
 
 
 //! Global BSA file manager

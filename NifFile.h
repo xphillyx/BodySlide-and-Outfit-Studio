@@ -1666,6 +1666,7 @@ public:
 
 	const vector<Vector3>* GetRawVertsForShape(const string& shapeName);
 	bool GetTrisForShape(const string& shapeName, vector<Triangle>* outTris);
+	int GetTriCountForShape(const string& shapename);
 	bool ReorderTriangles(const string& shapeName, const vector<ushort>& triangleIndices);
 	const vector<Vector3>* GetNormalsForShape(const string& shapeName, bool transform = true);
 	const vector<Vector3>* GetTangentsForShape(const string& shapeName, bool transform = true);
